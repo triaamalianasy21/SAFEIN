@@ -4,84 +4,139 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 
-# 1. Konfigurasi Halaman Dasar
-st.set_page_config(
-    page_title="SAFEIN Financial Dashboard",
-    page_icon="🛡️",
-    layout="wide"
-)
+# 1. Konfigurasi Halaman Utama
+st.set_page_config(page_title="SAFEIN Analysis", layout="wide")
 
-# 2. Fungsi Load Data (Tetap pakai main_data.csv)
 @st.cache_data
 def load_data():
-    # --- BAGIAN INI BIAR BISA JALAN DI DEPLOYMENT ---
-    # Mencari folder tempat dashboard.py berada
-    base_dir = Path(__file__).parent 
+    # Menggunakan Pathlib supaya server Streamlit Cloud nggak bingung nyari file
+    base_dir = Path(__file__).parent
     file_path = base_dir / "main_data.csv"
-    # -----------------------------------------------
     
+    if not file_path.exists():
+        st.error(f"File 'main_data.csv' tidak ditemukan di {file_path}")
+        st.stop()
+        
     df = pd.read_csv(file_path)
-    # Konversi kolom waktu agar bisa diolah untuk tren
     df['date_time'] = pd.to_datetime(df['date_time'])
     return df
 
-# Membungkus dalam try-except agar jika file tidak ada, dashboard tidak pecah
 try:
     all_df = load_data()
 
-    # 3. Header Dashboard
-    st.title("📊 SAFEIN: Personal Finance Analysis Dashboard")
-    st.markdown(f"**Nama: Tria Amalia Anasya** | Data Science Learning Path")
-    st.write("Dashboard ini memvisualisasikan tren pengeluaran dan pemasukan untuk membantu pengelolaan anggaran.")
+    # --- SIDEBAR (NAVIGASI SAJA) ---
+    st.sidebar.title("🛡️ SAFEIN Analysis")
+    menu = st.sidebar.radio(
+        "Pilih Analisis:",
+        [
+            "Overview Dashboard",
+            "Pertanyaan 1: Tren Bulanan",
+            "Pertanyaan 2: Top 5 Kategori",
+            "Pertanyaan 3: Rasio Keuangan",
+            "Pertanyaan 4: Deteksi Defisit",
+            "Pertanyaan 5: Pola Kuartal",
+            "Pertanyaan 6: Analisis Pinjaman (Loan)"
+        ]
+    )
+    st.sidebar.divider()
+    st.sidebar.caption("SAFEIN Capstone Project - 2026")
 
-    # 4. Ringkasan Metrik Utama (Total Income, Expense, Balance)
-    st.subheader("Financial Overview")
-    col1, col2, col3 = st.columns(3)
-    
-    total_income = all_df[all_df['type'] == 'income']['amount'].sum()
-    total_expense = all_df[all_df['type'] == 'expenses']['amount'].sum()
-    balance = total_income - total_expense
+    # --- MAIN CONTENT ---
+    st.title(f"📊 {menu}")
 
-    col1.metric("Total Pemasukan", f"{total_income:,.0f} BYN")
-    col2.metric("Total Pengeluaran", f"{total_expense:,.0f} BYN", delta_color="inverse")
-    col3.metric("Saldo Bersih (Balance)", f"{balance:,.0f} BYN")
-    
+    # --- FILTER DI ATAS GRAFIK ---
+    selected_types = st.multiselect(
+        "Filter Tipe Transaksi:",
+        options=['income', 'expenses'],
+        default=['income', 'expenses'],
+        key="main_filter"
+    )
+
+    filtered_df = all_df[all_df['type'].isin(selected_types)]
+    income_df = filtered_df[filtered_df['type'] == 'income']
+    expenses_df = filtered_df[filtered_df['type'] == 'expenses']
+
     st.divider()
 
-    # 5. Visualisasi 1: Tren Bulanan
-    st.subheader("1. Tren Bulanan Pemasukan vs Pengeluaran 2025")
+    if not selected_types:
+        st.warning("⚠️ Pilih setidaknya satu tipe agar grafik muncul!")
     
-    # Mengelompokkan data berdasarkan bulan dan tipe
-    monthly_trend = all_df.groupby(['month', 'type'])['amount'].sum().unstack().fillna(0)
-    
-    fig1, ax1 = plt.subplots(figsize=(12, 5))
-    monthly_trend.plot(kind='line', marker='o', ax=ax1, color=['#2ecc71', '#e74c3c']) 
-    ax1.set_ylabel("Jumlah (BYN)")
-    ax1.set_xlabel("Bulan")
-    ax1.grid(True, linestyle='--', alpha=0.6)
-    st.pyplot(fig1)
-    st.info("💡 Grafik ini menunjukkan pola arus kas setiap bulan untuk mengidentifikasi puncak pengeluaran.")
-
-    # 6. Visualisasi 2: Top 5 Kategori Pengeluaran
-    st.subheader("2. Top 5 Kategori Pengeluaran Terbesar")
-    
-    # Filter hanya data expenses
-    expense_df = all_df[all_df['type'] == 'expenses']
-    top_expenses = expense_df.groupby('category')['amount'].sum().sort_values(ascending=False).head(5)
-    
-    if not top_expenses.empty:
-        fig2, ax2 = plt.subplots(figsize=(10, 6))
-        sns.barplot(x=top_expenses.values, y=top_expenses.index, palette="Reds_r", ax=ax2)
-        ax2.set_xlabel("Total Pengeluaran (BYN)")
-        ax2.set_ylabel("Kategori")
-        st.pyplot(fig2)
     else:
-        st.warning("Data pengeluaran tidak ditemukan.")
+        if menu == "Overview Dashboard":
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Total Income", f"{income_df['amount'].sum():,.0f} BYN")
+            col2.metric("Total Expenses", f"{expenses_df['amount'].sum():,.0f} BYN")
+            col3.metric("Net Balance", f"{(income_df['amount'].sum() - expenses_df['amount'].sum()):,.0f} BYN")
 
-    st.divider()
-    st.caption("Copyright © 2026 - SAFEIN Project (DBS Coding Camp)")
+        elif menu == "Pertanyaan 1: Tren Bulanan":
+            monthly = filtered_df.groupby(['month', 'type'])['amount'].sum().unstack().fillna(0)
+            fig, ax = plt.subplots(figsize=(12, 6))
+            
+            if 'income' in monthly.columns:
+                ax.plot(monthly.index, monthly['income'], label='Pemasukan (Income)', marker='o', color='green', linewidth=2)
+            if 'expenses' in monthly.columns:
+                ax.plot(monthly.index, monthly['expenses'], label='Pengeluaran (Expenses)', marker='o', color='red', linewidth=2)
+                if 'income' in monthly.columns:
+                    ax.fill_between(monthly.index, monthly['income'], monthly['expenses'], color='gray', alpha=0.1)
+                
+                ax.annotate('Kondisi Defisit (Risiko)', xy=(3, 3272), xytext=(4, 3800),
+                             arrowprops=dict(facecolor='black', shrink=0.05), color='red', fontweight='bold')
+            
+            ax.set_xticks(range(1, 13))
+            ax.set_ylabel("Total Nominal (BYN)")
+            ax.legend()
+            ax.grid(True, linestyle='--', alpha=0.6)
+            st.pyplot(fig)
 
-except FileNotFoundError:
-    st.error("Error: File 'main_data.csv' tidak ditemukan. Pastikan file data berada di folder yang sama dengan dashboard.py.")
+        elif menu == "Pertanyaan 2: Top 5 Kategori":
+            top_5 = expenses_df.groupby("category")["amount"].sum().sort_values(ascending=False).head(5)
+            if not top_5.empty:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                top_5.plot(kind='barh', color='salmon', ax=ax)
+                for i, v in enumerate(top_5):
+                    ax.text(v + 20, i, f"{v:,.0f} BYN", va='center', fontweight='bold')
+                ax.invert_yaxis()
+                st.pyplot(fig)
+            else:
+                st.info("Pastikan 'expenses' terpilih untuk melihat data ini.")
+
+        elif menu == "Pertanyaan 3: Rasio Keuangan":
+            t_exp = expenses_df['amount'].sum()
+            t_inc = income_df['amount'].sum()
+            if t_inc > 0:
+                fig, ax = plt.subplots(figsize=(7, 7))
+                ax.pie([t_exp, t_inc - t_exp], labels=['Total Pengeluaran', 'Sisa Saldo (Surplus)'], 
+                        autopct='%1.1f%%', colors=['#ff9999','#66b3ff'], startangle=140, explode=(0.05, 0))
+                st.pyplot(fig)
+
+        elif menu == "Pertanyaan 4: Deteksi Defisit":
+            m_full = all_df.groupby(['month', 'type'])['amount'].sum().unstack().fillna(0)
+            m_full['net'] = m_full['income'] - m_full['expenses']
+            colors = ['green' if x >= 0 else 'red' for x in m_full['net']]
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.bar(m_full.index, m_full['net'], color=colors)
+            ax.axhline(0, color='black', linewidth=1)
+            ax.set_xticks(range(1, 13))
+            st.pyplot(fig)
+
+        elif menu == "Pertanyaan 5: Pola Kuartal":
+            exp_q = expenses_df.copy()
+            exp_q['quarter'] = exp_q['month'].apply(lambda x: f'Q{(x-1)//3 + 1}')
+            q_data = exp_q.groupby('quarter')['amount'].sum()
+            if not q_data.empty:
+                fig, ax = plt.subplots()
+                q_data.plot(kind='bar', color='skyblue', edgecolor='navy', ax=ax)
+                plt.xticks(rotation=0)
+                st.pyplot(fig)
+
+        elif menu == "Pertanyaan 6: Analisis Pinjaman (Loan)":
+            cat_data = expenses_df.groupby('category')['amount'].sum().sort_values(ascending=False)
+            if not cat_data.empty:
+                colors = ['red' if x == 'Loan given' else 'lightgrey' for x in cat_data.index]
+                fig, ax = plt.subplots(figsize=(12, 6))
+                cat_data.plot(kind='bar', color=colors, ax=ax)
+                plt.xticks(rotation=45, ha='right')
+                st.pyplot(fig)
+
 except Exception as e:
-    st.error(f"Terjadi kesalahan sistem: {e}")
+    st.error(f"Gagal memuat file: {e}")
