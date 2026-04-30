@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from pathlib import Path
 
 # 1. Konfigurasi Halaman Dasar
 st.set_page_config(
@@ -10,11 +11,16 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Fungsi Load Data (Menggunakan main_data.csv)
+# 2. Fungsi Load Data (Tetap pakai main_data.csv)
 @st.cache_data
 def load_data():
-    # Pastikan file main_data.csv ada di folder yang sama dengan dashboard.py
-    df = pd.read_csv("main_data.csv")
+    # --- BAGIAN INI BIAR BISA JALAN DI DEPLOYMENT ---
+    # Mencari folder tempat dashboard.py berada
+    base_dir = Path(__file__).parent 
+    file_path = base_dir / "main_data.csv"
+    # -----------------------------------------------
+    
+    df = pd.read_csv(file_path)
     # Konversi kolom waktu agar bisa diolah untuk tren
     df['date_time'] = pd.to_datetime(df['date_time'])
     return df
@@ -42,21 +48,21 @@ try:
     
     st.divider()
 
-    # 5. Visualisasi 1: Tren Bulanan (Menjawab Pertanyaan Bisnis tentang Fluktuasi)
+    # 5. Visualisasi 1: Tren Bulanan
     st.subheader("1. Tren Bulanan Pemasukan vs Pengeluaran 2025")
     
     # Mengelompokkan data berdasarkan bulan dan tipe
     monthly_trend = all_df.groupby(['month', 'type'])['amount'].sum().unstack().fillna(0)
     
     fig1, ax1 = plt.subplots(figsize=(12, 5))
-    monthly_trend.plot(kind='line', marker='o', ax=ax1, color=['#2ecc71', '#e74c3c']) # Hijau untuk income, Merah untuk expense
+    monthly_trend.plot(kind='line', marker='o', ax=ax1, color=['#2ecc71', '#e74c3c']) 
     ax1.set_ylabel("Jumlah (BYN)")
     ax1.set_xlabel("Bulan")
     ax1.grid(True, linestyle='--', alpha=0.6)
     st.pyplot(fig1)
     st.info("💡 Grafik ini menunjukkan pola arus kas setiap bulan untuk mengidentifikasi puncak pengeluaran.")
 
-    # 6. Visualisasi 2: Top 5 Kategori Pengeluaran (Analisis Detail)
+    # 6. Visualisasi 2: Top 5 Kategori Pengeluaran
     st.subheader("2. Top 5 Kategori Pengeluaran Terbesar")
     
     # Filter hanya data expenses
